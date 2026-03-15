@@ -1,0 +1,32 @@
+services:
+  pdm:
+    build: .
+    image: ghcr.io/willmortimer/pdm:latest
+    container_name: proxmox-datacenter-manager
+    ports:
+      - "8443:8443"
+    volumes:
+      - ./data:/var/lib/pdm
+      - ./pdm-data:/var/lib/proxmox-datacenter-manager
+      - ./config:/etc/proxmox-datacenter-manager
+      - ./wireguard:/etc/wireguard
+      - ./tailscale:/var/lib/tailscale
+    environment:
+      PDM_PORT: 8443
+      ENABLE_WIREGUARD: "false"   # Set to "true" to enable WireGuard
+      ENABLE_TAILSCALE: "false"   # Set to "true" to enable Tailscale
+      # TAILSCALE_AUTHKEY: ""     # Uncomment and set for automatic Tailscale auth
+    cap_add:
+      - NET_ADMIN   # Required for WireGuard and Tailscale
+      - SYS_MODULE  # Required if WireGuard needs kernel module loading
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    sysctls:
+      - net.ipv4.ip_forward=1
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-fkss", "https://localhost:8443/api2/json/version"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s

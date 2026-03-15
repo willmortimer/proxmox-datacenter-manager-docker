@@ -1,0 +1,37 @@
+# PDM Docker commands
+
+# Build and start containers
+up *args='':
+    docker compose up -d {{args}}
+
+# Build and start with local Dockerfile
+build *args='':
+    docker compose up -d --build {{args}}
+
+# Stop containers
+down:
+    docker compose down
+
+# View logs (follow mode)
+logs *args='':
+    docker compose logs -f {{args}}
+
+# Open a shell in the running container
+shell:
+    docker exec -it proxmox-datacenter-manager bash
+
+# Show container status and health
+status:
+    docker compose ps
+
+# Restart the PDM container
+restart:
+    docker compose restart
+
+# Pull latest image
+pull:
+    docker compose pull
+
+# Clean up stopped containers, images, and volumes
+clean:
+    docker compose down -v --rmi local

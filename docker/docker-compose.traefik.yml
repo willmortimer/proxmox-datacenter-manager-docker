@@ -1,0 +1,24 @@
+# Traefik reverse proxy override
+# Usage: docker compose -f docker-compose.yml -f docker-compose.traefik.yml up -d
+#
+# Prerequisites:
+#   - Traefik must be running with an "websecure" entrypoint and a "letsencrypt" certresolver
+#   - A Docker network named "traefik" must exist: docker network create traefik
+#   - Update the Host rule below with your domain
+
+services:
+  pdm:
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.pdm.rule=Host(`pdm.example.com`)"
+      - "traefik.http.routers.pdm.entrypoints=websecure"
+      - "traefik.http.routers.pdm.tls.certresolver=letsencrypt"
+      - "traefik.http.services.pdm.loadbalancer.server.port=8443"
+      - "traefik.http.services.pdm.loadbalancer.server.scheme=https"
+      - "traefik.http.services.pdm.loadbalancer.serversTransport=pdm-insecure@file"
+    networks:
+      - traefik
+
+networks:
+  traefik:
+    external: true
