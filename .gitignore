@@ -1,0 +1,31 @@
+# Runtime data
+data/
+pdm-data/
+config/
+
+# VPN state
+wireguard/
+tailscale/
+
+# Secrets and keys
+*.key
+*.pem
+
+# Environment files (allow .env.example)
+*.env
+.env*
+!.env.example
+
+# Dot directories (IDE, tooling state)
+.claude/
+.vscode/
+.idea/
+
+# OS artifacts
+.DS_Store
+Thumbs.db
+
+# Editor artifacts
+*.swp
+*.swo
+*~
