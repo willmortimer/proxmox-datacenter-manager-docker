@@ -2,7 +2,7 @@
 
 **Repository:** `willmortimer/proxmox-datacenter-manager-docker`  
 **Audit date:** 2026-07-12  
-**Status:** Active remediation plan
+**Status:** Active remediation plan — P0 items (upstream setup, secure compose, volume paths, documentation sync) have landed on `master`.
 
 ## Purpose and project position
 

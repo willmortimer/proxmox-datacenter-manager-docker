@@ -8,7 +8,7 @@ Detailed deployment, integration, and migration documentation for Proxmox Datace
 - [SSL/TLS Considerations](#ssltls-considerations)
 - [SDN / EVPN Support](#sdn--evpn-support)
 - [Proxmox Backup Server (PBS) Integration](#proxmox-backup-server-pbs-integration)
-- [Migration: Docker 0.9 to 1.0](#migration-docker-09-bookworm-to-10-trixie)
+- [Migration: Docker 0.9 to 1.1](#migration-docker-09-bookworm-to-11-trixie)
 - [Migration: Docker to LXC](#migration-docker-to-native-lxc)
 - [Backup and Restore](#backup-and-restore)
 
@@ -16,7 +16,14 @@ Detailed deployment, integration, and migration documentation for Proxmox Datace
 
 ## Reverse Proxy Setup
 
-PDM serves its web UI over HTTPS on port 8443 with a self-signed certificate. When placing PDM behind a reverse proxy, the proxy terminates the public TLS connection and forwards traffic to PDM's internal HTTPS endpoint.
+PDM serves its web UI over HTTPS on port 8443 inside the container with a self-signed certificate. The default Docker compose file binds the host port to `127.0.0.1` only, mapped via `PDM_HOST_PORT` (default `8443`):
+
+```yaml
+ports:
+  - "127.0.0.1:${PDM_HOST_PORT:-8443}:8443"
+```
+
+When placing PDM behind a reverse proxy, the proxy terminates the public TLS connection and forwards traffic to PDM's internal HTTPS endpoint on the host loopback address.
 
 ### Traefik
 
@@ -79,6 +86,7 @@ server {
 Key points:
 - `proxy_ssl_verify off` is required because PDM uses a self-signed certificate
 - WebSocket upgrade headers are included for real-time console features
+- Adjust the upstream port if you changed `PDM_HOST_PORT` from the default
 
 ### Caddy
 
@@ -105,7 +113,7 @@ pdm.example.com {
 
 ## SDN / EVPN Support
 
-PDM 1.0 centralizes Proxmox SDN management across clusters. If you intend to manage BGP/EVPN zones across disjointed clusters:
+PDM 1.1 centralizes Proxmox SDN management across clusters. If you intend to manage BGP/EVPN zones across disjointed clusters:
 
 - The PDM host (container or LXC) **must reside on a network bridge** (`vmbrX`) that has L2/L3 reachability to the SDN underlay networks of all managed PVE nodes
 - For Docker deployments, this typically means using `--network host` or a macvlan network that is bridged to the appropriate physical interface
@@ -124,7 +132,7 @@ PDM 1.0 centralizes Proxmox SDN management across clusters. If you intend to man
 
 ## Proxmox Backup Server (PBS) Integration
 
-PDM 1.0 supports managing Proxmox Backup Server remotes. Configuration includes:
+PDM 1.1 supports managing Proxmox Backup Server remotes. Configuration includes:
 
 - PBS remote certificates are cached in `/etc/proxmox-datacenter-manager/`
 - Ensure the PDM host can reach your PBS instances on port 8007
@@ -133,7 +141,7 @@ PDM 1.0 supports managing Proxmox Backup Server remotes. Configuration includes:
 
 ---
 
-## Migration: Docker 0.9 (Bookworm) to 1.0 (Trixie)
+## Migration: Docker 0.9 (Bookworm) to 1.1 (Trixie)
 
 For users running the original Docker container based on Debian Bookworm and the `pdm-test` repository:
 
@@ -144,17 +152,17 @@ cd docker
 docker compose down
 
 # Back up all persistent data
-tar -czf pdm-backup-$(date +%Y%m%d).tar.gz data/ config/ 2>/dev/null || \
-tar -czf pdm-backup-$(date +%Y%m%d).tar.gz data/
+tar -czf pdm-backup-$(date +%Y%m%d).tar.gz config/ pdm-data/ pdm-cache/ pdm-logs/ 2>/dev/null || \
+tar -czf pdm-backup-$(date +%Y%m%d).tar.gz config/
 ```
 
 ### Step 2: Update Compose File
 
 Replace your existing `docker-compose.yml` with the new version from `docker/docker-compose.yml`. Key changes:
-- New volume mount for `/etc/proxmox-datacenter-manager` (authentication keys)
-- New volume mount for `/var/lib/proxmox-datacenter-manager` (cluster metrics cache)
+- Volume mounts for `/etc/proxmox-datacenter-manager`, `/var/lib/proxmox-datacenter-manager`, `/var/cache/proxmox-datacenter-manager`, and `/var/log/proxmox-datacenter-manager`
+- Loopback-only host binding via `PDM_HOST_PORT`
 - Health check configuration
-- Expanded capabilities and sysctls for VPN support
+- No VPN capabilities in the default image
 
 ### Step 3: Start
 
@@ -163,9 +171,9 @@ docker compose up -d
 ```
 
 The `start-pdm.sh` entrypoint will:
-- Generate authentication keys if they don't exist
+- Run upstream `proxmox-datacenter-privileged-api setup` on first boot if keys are missing
 - Set correct ownership for the `www-data` user
-- The PDM database schema will auto-upgrade on first boot with 1.0
+- Launch both daemons from `/usr/libexec/proxmox/`
 
 ### Step 4: Verify
 
@@ -206,14 +214,14 @@ docker compose down
 CONTAINER_IP=$(pct exec 200 -- hostname -I | awk '{print $1}')
 
 # Transfer PDM state and config
-rsync -avz ./data/ root@${CONTAINER_IP}:/var/lib/pdm/
+rsync -avz ./pdm-data/ root@${CONTAINER_IP}:/var/lib/proxmox-datacenter-manager/
 rsync -avz ./config/ root@${CONTAINER_IP}:/etc/proxmox-datacenter-manager/
 ```
 
 ### Step 4: Fix Permissions
 
 ```bash
-pct exec 200 -- chown -R www-data:www-data /var/lib/pdm /etc/proxmox-datacenter-manager
+pct exec 200 -- chown -R www-data:www-data /var/lib/proxmox-datacenter-manager /etc/proxmox-datacenter-manager
 ```
 
 ### Step 5: Restart Services
@@ -235,24 +243,25 @@ curl -fkss https://${CONTAINER_IP}:8443/api2/json/version
 
 ### Docker
 
-Back up the persistent volumes:
+Back up the persistent volumes while the container is stopped for consistency:
 
 ```bash
 cd docker
+docker compose down
 
 # Create backup
-tar -czf pdm-backup-$(date +%Y%m%d).tar.gz data/ pdm-data/ config/
+tar -czf pdm-backup-$(date +%Y%m%d).tar.gz config/ pdm-data/ pdm-cache/ pdm-logs/
 
 # Restore
-docker compose down
 tar -xzf pdm-backup-YYYYMMDD.tar.gz
 docker compose up -d
 ```
 
 Critical paths to back up:
-- `data/` (`/var/lib/pdm`) — PDM state, SQLite database
-- `pdm-data/` (`/var/lib/proxmox-datacenter-manager`) — cached cluster metrics
 - `config/` (`/etc/proxmox-datacenter-manager`) — auth keys, CSRF token, PBS certs
+- `pdm-data/` (`/var/lib/proxmox-datacenter-manager`) — PDM state and cluster data
+- `pdm-cache/` (`/var/cache/proxmox-datacenter-manager`) — cached cluster metrics
+- `pdm-logs/` (`/var/log/proxmox-datacenter-manager`) — service logs
 
 ### LXC
 
@@ -269,8 +278,8 @@ Alternatively, back up only the PDM data:
 
 ```bash
 pct exec <vmid> -- tar -czf /tmp/pdm-backup.tar.gz \
-    /var/lib/pdm \
     /var/lib/proxmox-datacenter-manager \
+    /var/cache/proxmox-datacenter-manager \
     /etc/proxmox-datacenter-manager
 
 # Pull backup from container

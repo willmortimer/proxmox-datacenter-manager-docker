@@ -1,17 +1,19 @@
 # Proxmox Datacenter Manager (PDM) Docker & LXC
 
-Containerized deployment of [Proxmox Datacenter Manager](https://www.proxmox.com/en/products/proxmox-datacenter-manager) (PDM) 1.0 Stable, providing centralized management of multiple Proxmox VE clusters from a single interface.
+> **Important:** Pre-built images on GHCR published before the current P0 remediation work may be outdated or broken. The **Docker pathway in this repository is experimental and unofficial** — see [TRADEMARKS.md](TRADEMARKS.md) for the official/unofficial distinction. Deployment tooling is [MIT licensed](LICENSE); Proxmox Datacenter Manager itself is AGPLv3; container images contain mixed licenses.
 
-This repository offers two deployment pathways: a **hardened Docker environment** with VPN sidecar support, and a **native LXC deployment** for Proxmox administrators who prefer minimal overhead and native HA integration.
+Containerized deployment of [Proxmox Datacenter Manager](https://www.proxmox.com/en/products/proxmox-datacenter-manager) (PDM), providing centralized management of multiple Proxmox VE clusters from a single interface. Docker images install current PDM packages via `proxmox-datacenter-manager-container-meta` (PDM 1.1 series on Debian Trixie).
+
+This repository offers two deployment pathways: an **experimental Docker environment** for evaluation and homelab use, and a **native LXC deployment** for Proxmox administrators who prefer minimal overhead and native HA integration.
 
 ## Feature Matrix
 
 | Feature | Docker | LXC |
 |---|:---:|:---:|
-| PDM 1.0 Stable (Debian Trixie) | ✓ | ✓ |
+| PDM 1.1 (Debian Trixie, via container-meta) | ✓ | ✓ |
 | Dual-daemon security model | ✓ | ✓ |
-| WireGuard VPN | ✓ | ✓ |
-| Tailscale VPN | ✓ | ✓ |
+| WireGuard VPN | — | optional |
+| Tailscale VPN | — | optional |
 | Automated key bootstrapping | ✓ | ✓ |
 | Persistent data & config | ✓ | ✓ |
 | Health checks | ✓ | systemd |
@@ -20,14 +22,16 @@ This repository offers two deployment pathways: a **hardened Docker environment*
 | Proxmox HA/clustering | — | ✓ |
 | Native vzdump backup | — | ✓ |
 
+The Docker base image does **not** include VPN software or privileges. VPN support is available as an optional add-on in the LXC pathway (`--vpn tailscale` or `--vpn wireguard`).
+
 ## Architecture
 
-PDM 1.0 uses a dual-daemon security model:
+PDM uses a dual-daemon security model:
 
 - **`proxmox-datacenter-api`** — The main web API, runs unprivileged as `www-data` (port 8443)
-- **`proxmox-datacenter-privileged-api`** — System-level operations, runs as `root`, communicates via UNIX socket
+- **`proxmox-datacenter-privileged-api`** — System-level operations, runs as `root`, communicates via UNIX socket at `/run/proxmox-datacenter-manager/priv.sock`
 
-Both daemons are managed by the `start-pdm.sh` entrypoint (Docker) or systemd (LXC). Authentication keys and CSRF tokens are generated automatically on first startup.
+On first boot, the Docker entrypoint runs upstream `proxmox-datacenter-privileged-api setup` to generate authentication keys and CSRF tokens. Both daemons are launched from `/usr/libexec/proxmox/` by `start-pdm.sh` (Docker) or systemd (LXC).
 
 ## Quick Start: Docker
 
@@ -42,7 +46,7 @@ docker compose up -d
 docker compose ps
 ```
 
-Access the web UI at **https://localhost:8443**
+By default the web UI is bound to **127.0.0.1** on the host. Access it at **https://localhost:8443** (or the port set by `PDM_HOST_PORT`).
 
 ### Build Locally
 
@@ -69,7 +73,7 @@ cd proxmox-datacenter-manager-docker
 # Basic deployment
 bash lxc/setup-lxc.sh --vmid 200
 
-# With Tailscale
+# With Tailscale (optional)
 bash lxc/setup-lxc.sh --vmid 200 --vpn tailscale
 ```
 
@@ -83,38 +87,16 @@ See [lxc/LXC-README.md](lxc/LXC-README.md) for full options and manual setup ins
 
 | Variable | Default | Description |
 |---|---|---|
-| `PDM_PORT` | `8443` | HTTPS port for the PDM web UI |
-| `ENABLE_WIREGUARD` | `false` | Enable WireGuard VPN interface |
-| `ENABLE_TAILSCALE` | `false` | Enable Tailscale mesh VPN |
-| `TAILSCALE_AUTHKEY` | *(empty)* | Tailscale auth key for automatic authentication |
+| `PDM_HOST_PORT` | `8443` | Host port mapped to PDM's internal HTTPS listener (8443). Binds to `127.0.0.1` only. |
 
 ### Persistent Volumes (Docker)
 
 | Mount | Container Path | Purpose |
 |---|---|---|
-| `./data` | `/var/lib/pdm` | PDM state and SQLite database |
-| `./pdm-data` | `/var/lib/proxmox-datacenter-manager` | Cached cluster metrics |
 | `./config` | `/etc/proxmox-datacenter-manager` | Auth keys, CSRF token, certificates |
-| `./wireguard` | `/etc/wireguard` | WireGuard configuration |
-| `./tailscale` | `/var/lib/tailscale` | Tailscale state |
-
-## VPN Setup
-
-### WireGuard
-
-1. Place your WireGuard configuration at `docker/wireguard/wg0.conf`
-2. Set `ENABLE_WIREGUARD: "true"` in `docker-compose.yml`
-3. Restart the container: `docker compose restart`
-
-### Tailscale
-
-1. Set `ENABLE_TAILSCALE: "true"` in `docker-compose.yml`
-2. Optionally set `TAILSCALE_AUTHKEY` for headless authentication
-3. Restart the container: `docker compose restart`
-4. If no auth key is set, authenticate manually:
-   ```bash
-   docker exec -it proxmox-datacenter-manager tailscale up
-   ```
+| `./pdm-data` | `/var/lib/proxmox-datacenter-manager` | PDM state and cluster data |
+| `./pdm-cache` | `/var/cache/proxmox-datacenter-manager` | Cached cluster metrics |
+| `./pdm-logs` | `/var/log/proxmox-datacenter-manager` | Service logs |
 
 ## Reverse Proxy
 
@@ -125,17 +107,16 @@ cd docker
 docker compose -f docker-compose.yml -f docker-compose.traefik.yml up -d
 ```
 
-Edit `docker-compose.traefik.yml` to set your domain. See [DEPLOYMENT.md](DEPLOYMENT.md) for Nginx examples and SSL details.
+Edit `docker-compose.traefik.yml` to set your domain. PDM listens on port 8443 inside the container; the host maps it via `PDM_HOST_PORT` to loopback. See [DEPLOYMENT.md](DEPLOYMENT.md) for Nginx examples and SSL details.
 
 ## Migration
 
-### From PDM 0.9 (Bookworm) to 1.0 (Trixie)
+### From PDM 0.9 (Bookworm) to 1.1 (Trixie)
 
 1. `docker compose down`
-2. Back up `./data` directory
+2. Back up `./config`, `./pdm-data`, `./pdm-cache`, and `./pdm-logs`
 3. Replace your compose file with the new version from `docker/`
-4. Add the new `./config` volume mount for `/etc/proxmox-datacenter-manager`
-5. `docker compose up -d` — the database will auto-upgrade
+4. `docker compose up -d` — PDM will run first-boot setup if keys are missing
 
 ### From Docker to Native LXC
 
@@ -143,12 +124,12 @@ Edit `docker-compose.traefik.yml` to set your domain. See [DEPLOYMENT.md](DEPLOY
 2. Stop the Docker container: `docker compose down`
 3. Transfer data:
    ```bash
-   rsync -avz ./data/ root@<lxc-ip>:/var/lib/pdm/
+   rsync -avz ./pdm-data/ root@<lxc-ip>:/var/lib/proxmox-datacenter-manager/
    rsync -avz ./config/ root@<lxc-ip>:/etc/proxmox-datacenter-manager/
    ```
 4. Fix permissions on the PVE host:
    ```bash
-   pct exec 200 -- chown -R www-data:www-data /var/lib/pdm /etc/proxmox-datacenter-manager
+   pct exec 200 -- chown -R www-data:www-data /var/lib/proxmox-datacenter-manager /etc/proxmox-datacenter-manager
    ```
 5. Restart services:
    ```bash
@@ -160,6 +141,8 @@ Edit `docker-compose.traefik.yml` to set your domain. See [DEPLOYMENT.md](DEPLOY
 ```
 ├── README.md                        # This file
 ├── DEPLOYMENT.md                    # Advanced deployment guides
+├── LICENSE                          # MIT license for deployment tooling
+├── TRADEMARKS.md                    # Trademark and licensing notice
 ├── docker/
 │   ├── Dockerfile                   # Trixie-based PDM image
 │   ├── start-pdm.sh                 # Multi-process entrypoint
@@ -180,4 +163,4 @@ Contributions are welcome. Please open an issue or pull request.
 
 ## License
 
-This project is provided as-is for the Proxmox community. Proxmox Datacenter Manager is a product of [Proxmox Server Solutions GmbH](https://www.proxmox.com/).
+Deployment tooling in this repository is licensed under the [MIT License](LICENSE). Proxmox Datacenter Manager and other Proxmox software installed from Debian packages is licensed under AGPLv3 and other upstream licenses. See [TRADEMARKS.md](TRADEMARKS.md) for the full trademark and licensing notice.
