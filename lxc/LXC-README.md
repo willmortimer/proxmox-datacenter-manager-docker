@@ -60,15 +60,17 @@ pct create 200 local:vztmpl/debian-13-standard_13.2-1_amd64.tar.zst \
 # 2. Start the container
 pct start 200
 
-# 3. Install PDM inside the container
+# 3. Install PDM inside the container (Deb822 repo + container-meta)
+pct push 200 build/common/repositories.sh /tmp/repositories.sh
 pct exec 200 -- bash -c '
-    apt-get update && apt-get install -y wget gnupg ca-certificates
-    echo "deb http://download.proxmox.com/debian/pdm trixie pdm" \
-        > /etc/apt/sources.list.d/pdm.list
-    wget -qO /etc/apt/trusted.gpg.d/proxmox-release-trixie.gpg \
-        https://enterprise.proxmox.com/debian/proxmox-release-trixie.gpg
+    set -e
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update && apt-get install -y curl ca-certificates
+    chmod +x /tmp/repositories.sh
+    PDM_APT_CHANNEL=no-subscription /tmp/repositories.sh
     apt-get update
-    apt-get install -y proxmox-datacenter-manager proxmox-datacenter-manager-ui
+    apt-get install -y proxmox-datacenter-manager-container-meta
+    rm -f /tmp/repositories.sh
     systemctl enable --now proxmox-datacenter-privileged-api proxmox-datacenter-api
 '
 ```
@@ -135,7 +137,7 @@ Ensure the cgroup2 device rules are in the LXC config. The container must be ful
 
 **Permission denied on PDM data directories:**
 ```bash
-pct exec <vmid> -- chown -R www-data:www-data /var/lib/pdm /etc/proxmox-datacenter-manager
+pct exec <vmid> -- chown -R www-data:www-data /var/lib/proxmox-datacenter-manager /etc/proxmox-datacenter-manager
 ```
 
 **Container cannot reach Proxmox nodes:**
