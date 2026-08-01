@@ -186,6 +186,8 @@ docker compose logs -f pdm
 
 # Verify web UI
 curl -fkss https://localhost:8443/api2/json/version
+
+# PDM 1.1 may return HTTP 401 without auth; that is OK for liveness.
 ```
 
 ---

@@ -17,7 +17,7 @@ This repository offers two deployment pathways: an **experimental Docker environ
 | Automated key bootstrapping | ✓ | ✓ |
 | Persistent data & config | ✓ | ✓ |
 | Health checks | ✓ | systemd |
-| Multi-arch (amd64/arm64) | ✓ | ✓ |
+| Published image arch (amd64) | ✓ | ✓ |
 | Reverse proxy (Traefik) | ✓ | manual |
 | Proxmox HA/clustering | — | ✓ |
 | Native vzdump backup | — | ✓ |

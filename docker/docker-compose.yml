@@ -13,8 +13,13 @@ services:
       - ./pdm-cache:/var/cache/proxmox-datacenter-manager
       - ./pdm-logs:/var/log/proxmox-datacenter-manager
     restart: unless-stopped
+    # PDM 1.1 returns 401 for unauthenticated /api2/json/version; treat 200 or 401 as ready.
     healthcheck:
-      test: ["CMD", "curl", "-fkss", "https://localhost:8443/api2/json/version"]
+      test:
+        [
+          "CMD-SHELL",
+          "code=$$(curl -kss -o /dev/null -w '%{http_code}' https://127.0.0.1:8443/api2/json/version); echo $$code | grep -Eq '^(200|401)$'",
+        ]
       interval: 30s
       timeout: 10s
       retries: 3
