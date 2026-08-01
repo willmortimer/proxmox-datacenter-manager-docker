@@ -1,72 +1,60 @@
 FROM debian:trixie
 
-LABEL org.opencontainers.image.title="Proxmox Datacenter Manager"
-LABEL org.opencontainers.image.description="Containerized PDM 1.0 with VPN support (WireGuard/Tailscale)"
+ARG PDM_APT_CHANNEL=no-subscription
+
+LABEL org.opencontainers.image.title="Proxmox Datacenter Manager (unofficial experimental container)"
+LABEL org.opencontainers.image.description="Unofficial experimental container image for Proxmox Datacenter Manager on Debian trixie"
 LABEL org.opencontainers.image.source="https://github.com/willmortimer/proxmox-datacenter-manager-docker"
-LABEL org.opencontainers.image.licenses="MIT"
+LABEL org.opencontainers.image.licenses="Mixed"
+LABEL io.proxmox-datacenter-manager-docker.tooling-license="MIT"
+LABEL io.proxmox-datacenter-manager-docker.pdm-license="AGPL-3.0"
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV DEBCONF_NOWARNINGS=yes
 
-# Install system dependencies
 RUN apt-get update && apt-get install -y \
-    wget \
-    gnupg \
     ca-certificates \
     curl \
-    iproute2 \
+    gnupg \
+    wget \
+    procps \
     rsyslog \
     openssl \
-    wireguard-tools \
-    procps \
+    iproute2 \
     --no-install-recommends && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Force dpkg non-interactive behavior
 RUN echo 'DPkg::options { "--force-confdef"; "--force-confnew"; };' > /etc/apt/apt.conf.d/99force-conf
 
-# Install Tailscale
-RUN curl -fsSL https://pkgs.tailscale.com/stable/debian/trixie.noarmor.gpg \
-        -o /usr/share/keyrings/tailscale-archive-keyring.gpg && \
-    curl -fsSL https://pkgs.tailscale.com/stable/debian/trixie.tailscale-keyring.list \
-        -o /etc/apt/sources.list.d/tailscale.list && \
+COPY build/common/repositories.sh /tmp/repositories.sh
+RUN chmod +x /tmp/repositories.sh && \
+    PDM_APT_CHANNEL="${PDM_APT_CHANNEL}" /tmp/repositories.sh && \
     apt-get update && \
-    apt-get install -y tailscale --no-install-recommends && \
+    apt-get install -y proxmox-datacenter-manager-container-meta --no-install-recommends && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Install Proxmox Datacenter Manager (PDM 1.0 Stable)
-RUN echo 'deb http://download.proxmox.com/debian/pdm trixie pdm' \
-        > /etc/apt/sources.list.d/pdm.list && \
-    wget -qO /etc/apt/trusted.gpg.d/proxmox-release-trixie.gpg \
-        https://enterprise.proxmox.com/debian/proxmox-release-trixie.gpg && \
-    apt-get update && \
-    apt-get install -y \
-        proxmox-datacenter-manager \
-        proxmox-datacenter-manager-ui \
-        --no-install-recommends && \
-    apt-get clean && rm -rf /var/lib/apt/lists/*
-
-# Create required directories and set permissions
 RUN mkdir -p \
-        /var/lib/pdm \
-        /var/lib/proxmox-datacenter-manager \
-        /etc/proxmox-datacenter-manager \
-        /var/log/proxmox-datacenter-manager \
-        /var/run/tailscale \
-        /run/proxmox-datacenter && \
+    /etc/proxmox-datacenter-manager \
+    /var/lib/proxmox-datacenter-manager \
+    /var/cache/proxmox-datacenter-manager \
+    /var/log/proxmox-datacenter-manager \
+    /run/proxmox-datacenter-manager && \
     chown www-data:www-data \
-        /var/lib/pdm \
-        /var/lib/proxmox-datacenter-manager \
-        /var/log/proxmox-datacenter-manager
+    /var/lib/proxmox-datacenter-manager \
+    /var/cache/proxmox-datacenter-manager \
+    /var/log/proxmox-datacenter-manager
 
-# Copy and set entrypoint
-COPY start-pdm.sh /usr/local/bin/start-pdm.sh
+RUN dpkg-query -W -f='${Version}\n' proxmox-datacenter-manager > /etc/pdm-package-version 2>/dev/null || \
+    dpkg-query -W -f='${Version}\n' proxmox-datacenter-manager-container-meta > /etc/pdm-package-version
+
+COPY docker/start-pdm.sh /usr/local/bin/start-pdm.sh
 RUN chmod +x /usr/local/bin/start-pdm.sh
 
 EXPOSE 8443
 
-VOLUME /var/lib/pdm
-VOLUME /var/lib/proxmox-datacenter-manager
 VOLUME /etc/proxmox-datacenter-manager
+VOLUME /var/lib/proxmox-datacenter-manager
+VOLUME /var/cache/proxmox-datacenter-manager
+VOLUME /var/log/proxmox-datacenter-manager
 
 ENTRYPOINT ["/usr/local/bin/start-pdm.sh"]

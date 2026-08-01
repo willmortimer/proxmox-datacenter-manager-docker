@@ -4,9 +4,10 @@
 up *args='':
     docker compose up -d {{args}}
 
-# Build and start with local Dockerfile
+# Build image from repo root context, then start containers
 build *args='':
-    docker compose up -d --build {{args}}
+    docker build -f Dockerfile .. -t ghcr.io/willmortimer/pdm:latest {{args}}
+    docker compose up -d
 
 # Stop containers
 down:
