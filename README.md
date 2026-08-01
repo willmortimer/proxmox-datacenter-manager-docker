@@ -154,7 +154,7 @@ Edit `docker-compose.traefik.yml` to set your domain. PDM listens on port 8443 i
 │   │   └── tailscale-tun.conf       # TUN device config for unprivileged LXC
 │   └── LXC-README.md               # LXC deployment documentation
 └── .github/workflows/
-    └── docker-publish.yml           # Multi-arch CI/CD
+    └── docker-publish.yml           # AMD64 CI/CD
 ```
 
 ## Contributing
