@@ -16,8 +16,10 @@ MEMORY=2048
 CORES=2
 BRIDGE="vmbr0"
 DISK_SIZE=8
+PDM_APT_CHANNEL="${PDM_APT_CHANNEL:-no-subscription}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPOSITORIES_SCRIPT="${SCRIPT_DIR}/../build/common/repositories.sh"
 
 usage() {
     cat <<EOF
@@ -167,26 +169,29 @@ for i in $(seq 1 30); do
     sleep 2
 done
 
+if [[ ! -f "$REPOSITORIES_SCRIPT" ]]; then
+    echo "ERROR: Missing repository helper: $REPOSITORIES_SCRIPT"
+    exit 1
+fi
+
 echo "[setup] Installing PDM packages inside container..."
-pct exec "$VMID" -- bash -c '
+pct push "$VMID" "$REPOSITORIES_SCRIPT" /tmp/repositories.sh
+pct exec "$VMID" -- env PDM_APT_CHANNEL="$PDM_APT_CHANNEL" bash -c '
     set -e
     export DEBIAN_FRONTEND=noninteractive
 
     apt-get update
-    apt-get install -y wget gnupg ca-certificates --no-install-recommends
+    apt-get install -y curl ca-certificates --no-install-recommends
 
-    # Add PDM repository
-    echo "deb http://download.proxmox.com/debian/pdm trixie pdm" \
-        > /etc/apt/sources.list.d/pdm.list
-    wget -qO /etc/apt/trusted.gpg.d/proxmox-release-trixie.gpg \
-        https://enterprise.proxmox.com/debian/proxmox-release-trixie.gpg
+    chmod +x /tmp/repositories.sh
+    /tmp/repositories.sh
 
     apt-get update
-    apt-get install -y proxmox-datacenter-manager proxmox-datacenter-manager-ui --no-install-recommends
+    apt-get install -y proxmox-datacenter-manager-container-meta --no-install-recommends
     apt-get clean
     rm -rf /var/lib/apt/lists/*
+    rm -f /tmp/repositories.sh
 
-    # Enable and start PDM services
     systemctl enable proxmox-datacenter-privileged-api.service
     systemctl enable proxmox-datacenter-api.service
     systemctl start proxmox-datacenter-privileged-api.service
