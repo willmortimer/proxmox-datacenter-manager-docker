@@ -1,6 +1,6 @@
 # Proxmox Datacenter Manager (PDM) Docker & LXC
 
-> **Important:** Pre-built images on GHCR published before the current P0 remediation work may be outdated or broken. The **Docker pathway in this repository is experimental and unofficial** — see [TRADEMARKS.md](TRADEMARKS.md) for the official/unofficial distinction. Deployment tooling is [MIT licensed](LICENSE); Proxmox Datacenter Manager itself is AGPLv3; container images contain mixed licenses.
+> **Note:** The Docker pathway is **experimental and unofficial** — see [TRADEMARKS.md](TRADEMARKS.md). Prefer images built from current `master` (`ghcr.io/willmortimer/pdm:latest` or a `sha-*` tag from CI). Older GHCR tags from before the P0 packaging fix may be broken. Deployment tooling is [MIT licensed](LICENSE); Proxmox Datacenter Manager itself is AGPLv3; container images contain mixed licenses.
 
 Containerized deployment of [Proxmox Datacenter Manager](https://www.proxmox.com/en/products/proxmox-datacenter-manager) (PDM), providing centralized management of multiple Proxmox VE clusters from a single interface. Docker images install current PDM packages via `proxmox-datacenter-manager-container-meta` (PDM 1.1 series on Debian Trixie).
 
