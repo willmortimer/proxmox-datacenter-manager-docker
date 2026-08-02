@@ -4,7 +4,7 @@
 
 Containerized deployment of [Proxmox Datacenter Manager](https://www.proxmox.com/en/products/proxmox-datacenter-manager) (PDM), providing centralized management of multiple Proxmox VE clusters from a single interface. Docker images install current PDM packages via `proxmox-datacenter-manager-container-meta` (PDM 1.1 series on Debian Trixie).
 
-This repository offers two deployment pathways: an **experimental Docker environment** for evaluation and homelab use, and a **native LXC deployment** for Proxmox administrators who prefer minimal overhead and native HA integration.
+This repository offers two deployment pathways: an **experimental Docker environment** for evaluation and homelab use, and a **native LXC deployment** for Proxmox administrators who prefer minimal overhead and native HA integration. See [docs/FEATURE-COMPATIBILITY.md](docs/FEATURE-COMPATIBILITY.md) for what “local host” means in each pathway.
 
 ## Feature Matrix
 
@@ -50,21 +50,32 @@ By default the web UI is bound to **127.0.0.1** on the host. Access it at **http
 
 ### Build Locally
 
+Published and CI builds are **amd64 only**. On Apple Silicon or other arm64 hosts, force the platform or the Proxmox apt packages will not resolve:
+
 ```bash
 cd docker
-docker compose up -d --build
+DOCKER_DEFAULT_PLATFORM=linux/amd64 docker compose build
+docker compose up -d
+# or: docker build --platform linux/amd64 -f Dockerfile .. -t ghcr.io/willmortimer/pdm:latest
 ```
+
+On amd64 hosts, `docker compose up -d --build` is enough.
 
 ### Use Pre-built Image
 
-Update `docker-compose.yml` to remove the `build: .` line and use:
-```yaml
-image: ghcr.io/willmortimer/pdm:latest
+Compose already sets `image: ghcr.io/willmortimer/pdm:latest`. To skip a local build, pull and start without `--build`:
+
+```bash
+cd docker
+docker compose pull
+docker compose up -d
 ```
+
+Or remove the `build:` block from `docker-compose.yml` and keep only the `image:` line.
 
 ## Quick Start: LXC
 
-Run directly on a Proxmox VE host node:
+Run directly on a Proxmox VE host node. Defaults are `--storage local-lvm` and `--bridge vmbr0` — override these to match your node (for example `--bridge vmbr20` when `vmbr0` does not exist):
 
 ```bash
 git clone https://github.com/willmortimer/proxmox-datacenter-manager-docker.git
@@ -72,6 +83,9 @@ cd proxmox-datacenter-manager-docker
 
 # Basic deployment
 bash lxc/setup-lxc.sh --vmid 200
+
+# Custom storage / bridge
+bash lxc/setup-lxc.sh --vmid 200 --storage local-lvm --bridge vmbr0
 
 # With Tailscale (optional)
 bash lxc/setup-lxc.sh --vmid 200 --vpn tailscale
@@ -143,19 +157,36 @@ Edit `docker-compose.traefik.yml` to set your domain. PDM listens on port 8443 i
 ├── DEPLOYMENT.md                    # Advanced deployment guides
 ├── LICENSE                          # MIT license for deployment tooling
 ├── TRADEMARKS.md                    # Trademark and licensing notice
+├── docs/
+│   ├── FEATURE-COMPATIBILITY.md     # Native vs container feature matrix
+│   └── AUDIT_AND_HARDENING_ROADMAP.md
+├── build/
+│   └── common/
+│       └── repositories.sh          # Shared Deb822 PDM apt setup
 ├── docker/
-│   ├── Dockerfile                   # Trixie-based PDM image
+│   ├── Dockerfile                   # Trixie-based PDM image (amd64)
 │   ├── start-pdm.sh                 # Multi-process entrypoint
-│   ├── docker-compose.yml           # Production-ready compose
-│   └── docker-compose.traefik.yml   # Traefik reverse proxy overlay
+│   ├── docker-compose.yml           # Experimental secure defaults
+│   ├── docker-compose.traefik.yml   # Traefik reverse proxy overlay
+│   └── .env.example                 # PDM_HOST_PORT example
 ├── lxc/
 │   ├── setup-lxc.sh                 # Automated PVE host provisioning
 │   ├── config-templates/
 │   │   └── tailscale-tun.conf       # TUN device config for unprivileged LXC
-│   └── LXC-README.md               # LXC deployment documentation
+│   └── LXC-README.md                # LXC deployment documentation
 └── .github/workflows/
-    └── docker-publish.yml           # AMD64 CI/CD
+    ├── docker-publish.yml           # AMD64 image publish
+    └── lint.yml                     # Dockerfile / shell / compose checks
 ```
+
+## Acknowledgments
+
+P0 remediation incorporated useful ideas from community forks (we did not merge their trees wholesale):
+
+- [tylerobara/proxmox-datacenter-manager-docker](https://github.com/tylerobara/proxmox-datacenter-manager-docker) — `pdm-no-subscription` repository component fix
+- [elbandi/proxmox-datacenter-manager-docker](https://github.com/elbandi/proxmox-datacenter-manager-docker) — explicit `/usr/libexec/proxmox/` paths, supervisor-style process thinking, dropping bundled VPN, and daily-maintenance direction
+- [Xeon-Technology/proxmox-datacenter-manager-docker](https://github.com/Xeon-Technology/proxmox-datacenter-manager-docker) — keeping VPN out of the core image
+- [Aksine/proxmox-datacenter-manager-docker](https://github.com/Aksine/proxmox-datacenter-manager-docker) — early feedback on initialization and versioned images
 
 ## Contributing
 

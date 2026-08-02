@@ -10,16 +10,25 @@ Deploy Proxmox Datacenter Manager directly in an LXC container on your Proxmox V
 
 ## Quick Start
 
+Defaults are `--storage local-lvm` and `--bridge vmbr0`. Many lab/cluster nodes use a different bridge (for example `vmbr20`) or storage pool — set them explicitly or `pct create` will fail.
+
 ```bash
 # Clone the repository on your PVE host
 git clone https://github.com/willmortimer/proxmox-datacenter-manager-docker.git
 cd proxmox-datacenter-manager-docker
 
-# Basic deployment
+# Inspect this node first if unsure:
+#   pvesm status
+#   ls /etc/network/interfaces  # or: ip -br link | grep vmbr
+
+# Basic deployment (defaults: local-lvm + vmbr0)
 bash lxc/setup-lxc.sh --vmid 200
 
+# Override storage and bridge to match the host
+bash lxc/setup-lxc.sh --vmid 200 --storage local-lvm --bridge vmbr20
+
 # With Tailscale VPN support
-bash lxc/setup-lxc.sh --vmid 200 --vpn tailscale
+bash lxc/setup-lxc.sh --vmid 200 --vpn tailscale --bridge vmbr0
 
 # Fully customized
 bash lxc/setup-lxc.sh --vmid 200 \
